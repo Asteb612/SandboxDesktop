@@ -1,5 +1,12 @@
 #Sandbox Desktop
 
+##TODO
+- Find a good x11 lib
+- Check if out rendering is ok or find how to use the x11 protocol
+
+- Local Windows Manager + ssh connection
+
+##Summary
 SandboxDesktop: Entry point
 ConfigManager: Control config edition
 WindowsManager: Detects windows events
@@ -24,4 +31,4 @@ Windows Manager <-> Module Manager <-> Module
 #### To js callback
 Windows Manager <-> Module Manager <-> Module
 ----
-Each Modules can define callback called by ModuleManager 
+Each Modules can define callback called by ModuleManager

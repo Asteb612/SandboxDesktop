@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 # Hello world example. Doesn't depend on any third party GUI framework.
 # Tested with CEF Python v57.0+.
 
@@ -6,10 +7,51 @@ import platform
 import sys
 
 
+settings = {
+    "debug": True,
+    "log_severity": cef.LOGSEVERITY_INFO,
+    "log_file": "debug.log",
+}
+
+
+class SandboxManager:
+    _config = dict()
+    _params = dict()
+    _start_points = {
+        'start': {'name': '', 'required_config': [], 'check': None, 'exec': None},
+        'end': {'name': '', 'required_config': [], 'check': None, 'exec': None},
+        'restart': {'name': '', 'required_config': [], 'check': None, 'exec': None},
+        'kill': {'name': '', 'required_config': [], 'check': None, 'exec': None},
+        'status': {'name': '', 'required_config': [], 'check': None, 'exec': None},
+    }
+
+    def __init__(self):
+        pass
+
+    def _load_params(self, data):
+        pass
+
+    def _load_config(self, data):
+        pass
+
+    def init(self, params={}, config={}):
+        self._load_params(params)
+        self._load_config(config)
+
+    def run(self):
+        pass
+
+
 def main():
+    sm = SandboxManager()
+    sm.init(params={}, config={})
+    sm.run()
+
+
+def _main():
     check_versions()
     sys.excepthook = cef.ExceptHook  # To shutdown all CEF processes on error
-    cef.Initialize()
+    cef.Initialize(settings=settings)
     cef.CreateBrowserSync(url="https://www.google.com/",
                           window_title="Hello World!")
     cef.MessageLoop()
