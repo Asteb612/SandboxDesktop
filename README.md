@@ -32,3 +32,6 @@ Windows Manager <-> Module Manager <-> Module
 Windows Manager <-> Module Manager <-> Module
 ----
 Each Modules can define callback called by ModuleManager
+
+#setuptools
+https://python-packaging.readthedocs.io/en/latest/
