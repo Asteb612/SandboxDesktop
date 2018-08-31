@@ -11,12 +11,6 @@ import sys
 import time
 
 
-settings = {
-    "debug": True,
-    "log_severity": cef.LOGSEVERITY_INFO,
-    "log_file": "debug.log",
-}
-
 class RequiredConfig(Exception):
     pass
 
@@ -42,6 +36,41 @@ class WindowManager(Thread):
             print('Window Manager')
             time.sleep(1)
 
+class CEFManager(Thread):
+    _settings = {
+        "debug": True,
+        "log_severity": cef.LOGSEVERITY_INFO,
+        "log_file": "debug.log",
+    }
+
+    def __init__(self, sm,  param, config):
+        Thread.__init__(self)
+        self._sm = sm
+
+    def check_versions(self):
+        ver = cef.GetVersion()
+        print("[hello_world.py] CEF Python {ver}".format(ver=ver["version"]))
+        print("[hello_world.py] Chromium {ver}".format(ver=ver["chrome_version"]))
+        print("[hello_world.py] CEF {ver}".format(ver=ver["cef_version"]))
+        print("[hello_world.py] Python {ver} {arch}".format(
+               ver=platform.python_version(),
+               arch=platform.architecture()[0]))
+        assert cef.__version__ >= "57.0", "CEF Python v57.0+ required to run this"
+
+    def run(self):
+        self.check_versions()
+        sys.excepthook = cef.ExceptHook
+        try:
+            cef.Initialize(settings=self._settings)
+            cef.CreateBrowserSync(url="https://www.google.com/", window_title="Hello World!")
+            cef.MessageLoop()
+            # while self._sm.running:
+            #     print('Window Manager')
+            #     time.sleep(1)
+            cef.Shutdown()
+        except cef.ExceptHook:
+            print("CEF Crash")
+
 class ModuleManager(Thread):
 
     def __init__(self, sm, param, config):
@@ -60,6 +89,7 @@ class SandboxManager:
     _running = False
     _wm = None
     _mm = None
+    _cef = None
     _lck = Lock()
     _stop_evt = Event()
     _start_points = {
@@ -143,12 +173,14 @@ class SandboxManager:
         try:
             self._mm = ModuleManager(self, self._params, self._config)
             self._wm = WindowManager(self, self._params, self._config)
+            self._cef = CEFManager(self, self._params, self._config)
         except Exception:
             print('Module init failed')
         else:
             self._running = True
             self._mm.start()
             self._wm.start()
+            self._cef.start()
 
     def _clean(self):
         if self._mm is not None:
@@ -157,6 +189,9 @@ class SandboxManager:
         if self._wm is not None:
             print("Waite join wm")
             self._wm.join()
+        if self._wm is not None:
+            print("Waite join cef")
+            self._cef.join()
 
     def init(self, params={}, config={}):
         self._load_params(params)
@@ -187,27 +222,6 @@ def main():
     sm = SandboxManager()
     sm.init(params={}, config={})
     sm.run()
-
-
-def _main():
-    check_versions()
-    sys.excepthook = cef.ExceptHook  # To shutdown all CEF processes on error
-    cef.Initialize(settings=settings)
-    cef.CreateBrowserSync(url="https://www.google.com/",
-                          window_title="Hello World!")
-    cef.MessageLoop()
-    cef.Shutdown()
-
-
-def check_versions():
-    ver = cef.GetVersion()
-    print("[hello_world.py] CEF Python {ver}".format(ver=ver["version"]))
-    print("[hello_world.py] Chromium {ver}".format(ver=ver["chrome_version"]))
-    print("[hello_world.py] CEF {ver}".format(ver=ver["cef_version"]))
-    print("[hello_world.py] Python {ver} {arch}".format(
-           ver=platform.python_version(),
-           arch=platform.architecture()[0]))
-    assert cef.__version__ >= "57.0", "CEF Python v57.0+ required to run this"
 
 
 if __name__ == '__main__':

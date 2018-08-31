@@ -1,11 +1,5 @@
 #Sandbox Desktop
 
-##TODO
-- Find a good x11 lib
-- Check if out rendering is ok or find how to use the x11 protocol
-
-- Local Windows Manager + ssh connection
-
 ##Summary
 SandboxDesktop: Entry point
 ConfigManager: Control config edition
@@ -22,16 +16,16 @@ ResourceManager: Manager and control resources access and contexts
 -----
 ### Request owned by module to Windows Manager
 Must of request are owned by module and because modules are writen by users its need security.
-[Modules]   <-> Modules API  <-> REST Requests <-> ModuleManager <-> Resource Manager <-> Windows Manager
+[Modules] <> Modules API <> REST Requests <> ModuleManager <> Resource Manager <> Windows Manager
 
 ### Request owned by Window Manager to module
 All request owned by Windows Manager are with top priority.
 #### To python callback
-Windows Manager <-> Module Manager <-> Module
-#### To js callback
-Windows Manager <-> Module Manager <-> Module
-----
-Each Modules can define callback called by ModuleManager
+Windows Manager <> Module Manager <> Module
 
-#setuptools
-https://python-packaging.readthedocs.io/en/latest/
+#### To js callback
+Windows Manager <> Module Manager <> Module
+* Each Modules can define callback called by ModuleManager
+
+### Setuptools
+* https://python-packaging.readthedocs.io/en/latest/
