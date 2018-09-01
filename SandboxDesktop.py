@@ -1,6 +1,5 @@
-#!/usr/bin/python3
-# Hello world example. Doesn't depend on any third party GUI framework.
-# Tested with CEF Python v57.0+.
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*
 
 from threading import Thread, Lock, Event
 import argparse
