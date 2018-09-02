@@ -123,15 +123,20 @@ class SandboxManager:
             self._cef.start()
 
     def _clean(self):
+        print("Clean sandbox")
         if self._mm is not None:
             print("Waite join mm")
             self._mm.join()
+            del self._mm
         if self._wm is not None:
             print("Waite join wm")
             self._wm.join()
-        if self._wm is not None:
+            del self._wm
+        if self._cef is not None:
             print("Waite join cef")
+            self._cef.stop()
             self._cef.join()
+            del self._cef
 
     def init(self, params={}, config={}):
         self._load_params(params)
@@ -155,6 +160,8 @@ class SandboxManager:
             self._wait_exit()
             if hasattr(self, 'clean'):
                 getattr(self, command['clean'])()
+            else:
+                self._clean()
         except Exception:
             print('Command {} failed'.format(command['name']))
 
