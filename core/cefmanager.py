@@ -2,6 +2,7 @@ from cefpython3 import cefpython as cef
 from threading import Thread, Lock, Event
 import platform
 import sys
+import os
 
 class CEFManager(Thread):
     _settings = {
@@ -29,7 +30,7 @@ class CEFManager(Thread):
         sys.excepthook = cef.ExceptHook
         try:
             cef.Initialize(settings=self._settings)
-            cef.CreateBrowserSync(url="https://www.google.com/", window_title="Hello World!")
+            cef.CreateBrowserSync(url="file://{}/ui/dist/ui/index.html".format(os.getcwd()), window_title="Hello World!")
             cef.MessageLoop()
             # while self._sm.running:
             #     print('Window Manager')
