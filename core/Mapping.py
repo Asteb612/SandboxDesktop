@@ -23,7 +23,7 @@ class mapping:
         self.windowList = []
 
     def handleMapEvent(self, event):
-        # event.window.reparent(self.rootWindow, 30, 30)
+        # event.window.reparent(self.cef, 30, 30)
         event.window.map()  # Map window
         event.window.set_input_focus(X.RevertToParent, X.CurrentTime)  # Focus window
         event.window.configure(stack_mode = X.Above)  # Raise window to top

@@ -113,14 +113,16 @@ class SandboxManager:
         try:
             self._mm = ModuleManager(self, self._params, self._config)
             self._cef = CEFManager(self, self._params, self._config)
+            self._cef.start()
+            time.sleep(1)
+
             self._wm = WindowManager(self, self._params, self._config)
         except Exception:
             print('Module init failed')
         else:
             self._running = True
             self._mm.start()
-            self._cef.start()
-            self._wm.start()
+            # self._wm.start()
 
     def _clean(self):
         print("Clean sandbox")

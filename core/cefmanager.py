@@ -17,16 +17,6 @@ class CEFManager(Thread):
         print("CEF: Create object")
 
         self.check_versions()
-        sys.excepthook = cef.ExceptHook
-        try:
-            print("CEF: Initialise")
-            cef.Initialize(settings=self._settings)
-            print("CEF: CreateBrowser")
-            win = cef.CreateBrowserSync(url="file://{}/ui/dist/ui/index.html".format(os.getcwd()), window_title="Hello World!")
-            self.wid = win.GetWindowHandle()
-            print("CEF: Started on {}".format(self.wid))
-        except cef.ExceptHook:
-            print("CEF Crash")
 
     def check_versions(self):
         ver = cef.GetVersion()
@@ -39,11 +29,18 @@ class CEFManager(Thread):
         assert cef.__version__ >= "57.0", "CEF Python v57.0+ required to run this"
 
     def run(self):
+        sys.excepthook = cef.ExceptHook
         try:
+            print("CEF: Initialise")
+            cef.Initialize(settings=self._settings)
+            print("CEF: CreateBrowser")
+            self.win = cef.CreateBrowserSync(url="file://{}/ui/dist/ui/index.html".format(os.getcwd()), window_title="Hello World!")
+            self.wid = self.win.GetWindowHandle()
+            print("CEF: Started on {}".format(self.wid))
             cef.MessageLoop()
             # while self._sm.running:
             #     print('Window Manager')
             #     time.sleep(1)
-            cef.Shutdown()
+            # cef.Shutdown()
         except cef.ExceptHook:
             print("CEF Crash")

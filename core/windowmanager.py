@@ -40,6 +40,7 @@ class WindowManager(Thread):
 
     def handleEvents(self):
         if True: #self.display.pending_events() > 0:  # If there is an event in the queue
+            print("Wait event")
             event = self.display.next_event()  # Grab it
             print("Got an event! ({})".format(str(event.type)))
             print(
