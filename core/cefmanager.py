@@ -34,7 +34,11 @@ class CEFManager(Thread):
             print("CEF: Initialise")
             cef.Initialize(settings=self._settings)
             print("CEF: CreateBrowser")
-            self.win = cef.CreateBrowserSync(url="file://{}/ui/dist/ui/index.html".format(os.getcwd()), window_title="Hello World!")
+            br_WindowInfo = cef.WindowInfo()
+            br_WindowInfo.SetAsChild(0)
+            br_WindowInfo.windowRect = [0, 0, 1200, 720]
+            # br_WindowInfo.windowName = 'CefAPP'
+            self.win = cef.CreateBrowserSync(br_WindowInfo, url="file://{}/ui/dist/ui/index.html".format(os.getcwd()), window_title="Hello World!")
             self.wid = self.win.GetWindowHandle()
             print("CEF: Started on {}".format(self.wid))
             cef.MessageLoop()

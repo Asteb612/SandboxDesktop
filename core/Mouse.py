@@ -5,7 +5,7 @@ class mouse:
         self.dragWindow = None
 
     def configureMouse(self, window):
-            window.grab_button(0, X.Mod1Mask, True,
+            window.grab_button(0, 0, True,
                 X.ButtonMotionMask | X.ButtonReleaseMask | X.ButtonPressMask,
                 X.GrabModeAsync,
                 X.GrabModeAsync,

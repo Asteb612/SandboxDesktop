@@ -19,11 +19,14 @@ class colour(object):
 class mapping:
     def __init__(self, display, rootWindow):
         self.display = display
+        self.rootWindow = rootWindow
         self.mouseHandler = mouse()
         self.windowList = []
+        print("Mapping: Create object")
 
     def handleMapEvent(self, event):
-        # event.window.reparent(self.cef, 30, 30)
+        print("Mapping: map window {}".format(event.window.id))
+        event.window.reparent(self.rootWindow.id, 30, 30)
         event.window.map()  # Map window
         event.window.set_input_focus(X.RevertToParent, X.CurrentTime)  # Focus window
         event.window.configure(stack_mode = X.Above)  # Raise window to top
