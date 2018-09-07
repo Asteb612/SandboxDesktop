@@ -30,15 +30,14 @@ class WindowManager(Thread):
             raise "CEF windows not found"
         #TODO: Décider comment les événement vont être géré et par qui
         # Je pense que déléguer les événement clavier a cef et les focus a xlib pour le rediriger vers cef est envisageable
-        self.rootWindow.change_attributes(event_mask = X.SubstructureRedirectMask)
+        # https://tronche.com/gui/x/xlib/events/processing-overview.html
+        self.cef.reparent(self.rootWindow.id, 0, 0)
+        self.rootWindow.change_attributes(event_mask = X.SubstructureRedirectMask | X.MotionNotify)
+        # self.cef.change_attributes(event_mask = X.SubstructureRedirectMask | X.MotionNotify)
         self.keyboardHandler = keyboard(self.display, self.rootWindow)
         self.mouseHandler = mouse()
         self.mappingHandler = mapping(self.display, self.rootWindow)
-
-        self.cef.change_attributes(event_mask = X.SubstructureRedirectMask)
-        self.keyboardHandler2 = keyboard(self.display, self.cef)
-        self.mouseHandler2 = mouse()
-        self.mappingHandler2 = mapping(self.display, self.cef)
+        self.mouseHandler.configureMouse(self.cef)
 
     def handleEvents(self):
         if True: #self.display.pending_events() > 0:  # If there is an event in the queue

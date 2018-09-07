@@ -25,7 +25,7 @@ class mapping:
         print("Mapping: Create object")
 
     def handleMapEvent(self, event):
-        print("Mapping: map window {}".format(event.window.id))
+        # print("Mapping: map window {}".format(event.window.id))
         event.window.reparent(self.rootWindow.id, 30, 30)
         event.window.map()  # Map window
         event.window.set_input_focus(X.RevertToParent, X.CurrentTime)  # Focus window
