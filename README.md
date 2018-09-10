@@ -29,3 +29,34 @@ Windows Manager <> Module Manager <> Module
 
 ### Setuptools
 * https://python-packaging.readthedocs.io/en/latest/
+
+
+### Border
+```python
+window.configure(border_width = preferences.theme.border.borderWidth)
+window.change_attributes(None,border_pixel=borderColour)
+self.display.sync()
+```
+
+### Window Background
+https://tronche.com/gui/x/xlib/window/attributes/background.html
+https://en.wikipedia.org/wiki/Alpha_compositing
+
+```python
+colormap = d.screen().default_colormap
+
+    red = colormap.alloc_named_color("red").pixel
+    blue = colormap.alloc_named_color("blue").pixel
+    background = colormap.alloc_named_color("white").pixel
+
+    window = root.create_window(100, 100, 100, 100, 1,
+                                X.CopyFromParent, X.InputOutput,
+                                X.CopyFromParent,
+                                background_pixel = background,
+                                event_mask = X.StructureNotifyMask | X.ExposureMask)
+    window.map()
+```
+
+```python
+r.change_property(Xatom.WM_NORMAL_HINTS, Xatom.STRING, 32, [1, 2, 3, 4])
+```
