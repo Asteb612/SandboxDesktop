@@ -60,3 +60,15 @@ colormap = d.screen().default_colormap
 ```python
 r.change_property(Xatom.WM_NORMAL_HINTS, Xatom.STRING, 32, [1, 2, 3, 4])
 ```
+
+### CEF Detect close Browser
+If CEF Browser close call ```sm.stop()```
+
+
+### Xlib Events
+Catched by sub programm and popup container:
+- Focus in/out -> call ```wm.focus(winId), wm.unfocus(winId)```
+- Mouse Control(only popup container)
+
+Catched by CEF:
+- All events

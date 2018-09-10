@@ -93,8 +93,8 @@ class SandboxManager:
             self._check_minimal_value(self._config, minimal_params)
 
     def _wait_exit(self):
-        time.sleep(10)
-        self.stop()
+        while self.running:
+            time.sleep(0.5)
 
     @property
     def running(self):
@@ -158,7 +158,6 @@ class SandboxManager:
             raise "Check command failed"
         try:
             getattr(self, command['exec'])()
-            time.sleep(10)
             self._wait_exit()
             if hasattr(self, 'clean'):
                 getattr(self, command['clean'])()

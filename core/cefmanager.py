@@ -4,6 +4,10 @@ import platform
 import sys
 import os
 
+"""CEFManager:
+This object control the front part of SandboxDesktop
+"""
+
 class CEFManager(Thread):
     _settings = {
         "debug": True,
@@ -28,6 +32,13 @@ class CEFManager(Thread):
                arch=platform.architecture()[0]))
         assert cef.__version__ >= "57.0", "CEF Python v57.0+ required to run this"
 
+    def open_popup(url, x=0, y=0, height=100, width=100):
+        """Create a popup.
+        url: Start point of popup
+        """
+        print("CEF: Create new popup url='{}' x={} y={} height={} width={}".format(url, x, x, height, width))
+        pass
+
     def run(self):
         sys.excepthook = cef.ExceptHook
         try:
@@ -37,14 +48,12 @@ class CEFManager(Thread):
             br_WindowInfo = cef.WindowInfo()
             br_WindowInfo.SetAsChild(0)
             br_WindowInfo.windowRect = [0, 0, 1200, 720]
-            # br_WindowInfo.windowName = 'CefAPP'
+            br_WindowInfo.windowName = 'SandboxDesktop: Web Windows Manager'
             self.win = cef.CreateBrowserSync(br_WindowInfo, url="file://{}/ui/dist/ui/index.html".format(os.getcwd()), window_title="Hello World!")
             self.wid = self.win.GetWindowHandle()
             print("CEF: Started on {}".format(self.wid))
             cef.MessageLoop()
-            # while self._sm.running:
-            #     print('Window Manager')
-            #     time.sleep(1)
-            # cef.Shutdown()
+            cef.Shutdown()
+            self._sm.stop()
         except cef.ExceptHook:
             print("CEF Crash")
