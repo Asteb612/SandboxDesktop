@@ -1,29 +1,32 @@
 # SandboxDesktop
 
-**The browser holds the full user interface. Programs run as Wayland micro-containers — local or remote — streamed into a web UI.**
+**A native client renders the full UI with the Chromium engine and a local Wayland compositor. Programs run as Wayland micro-containers — local or remote — and their content is forwarded to the client.**
 
-SandboxDesktop is a personal, self-hosted **application-streaming workspace**. The entire UI is a
-website (a Vue.js PWA you open in any browser). You sign in like any web app and talk to a **GraphQL**
-backend; that backend is the only component with system access. The programs you run never touch your
-local display server — each one runs inside its own **Wayland** micro-container, on your machine or on a
-remote host, and **only the application's own content** is streamed back into the web UI over WebRTC.
+SandboxDesktop is a personal, self-hosted **application workspace**. The UI is built in web technology
+(Vue 3) and rendered by an embedded **Chromium engine (CEF)** inside a **native client** — the project's
+original CEF direction, now with a clear architecture. The client also runs a **local Wayland
+compositor**, so each program's surface can be **forwarded (waypipe-style) and rendered locally** instead
+of always streaming pixels. You sign in like any web app and talk to a **GraphQL** backend; that backend
+is the only component with system access. Each program runs inside its own strongly-isolated **Wayland**
+micro-container, on your machine or a remote host, and **only that program's content** is delivered.
 
 Your interface is **yours**: each user gets a per-user, fully editable UI, customizable at three
 overloadable levels — **Theme → Interface → Components** — and **plugins can change it**.
 
-It is **not** a window manager and it does not embed a browser. It is closest in spirit to
-[Selkies/Webtop](https://www.linuxserver.io/blog/webtop-4-0-wayland-is-here-engage-the-reality-engine)
-(open, Wayland, WebRTC) and to [Shadow](https://shadow.tech) (PC streaming to any browser) — but
-unlike either, every program is its **own per-application sandbox**, arranged inside a Vue workspace.
+It is **not** a window manager. It draws on [waypipe](https://gitlab.freedesktop.org/mstoeckl/waypipe)
+(single-app Wayland forwarding), ChromeOS [Sommelier](https://chromium.googlesource.com/chromiumos/platform2/+/HEAD/vm_tools/sommelier/README.md)
+(compositing external surfaces with a Chromium UI), and [Selkies/Webtop](https://www.linuxserver.io/blog/webtop-4-0-wayland-is-here-engage-the-reality-engine)
+(the WebRTC fallback) — but every program is its **own per-application sandbox**.
 
 ## Architecture at a glance
 
 | Layer | Technology | Role |
 |-------|-----------|------|
-| **UI** | Vue 3 + Pinia (PWA) | Per-user, editable interface (Theme/Interface/Components); renders app surfaces; loads UI plugins. Runs in any browser. |
-| **Backend** | Go + **GraphQL** (gqlgen) | Authenticated, privileged control plane: queries/mutations + subscriptions, internal authorization, container lifecycle, stream brokering, host abstraction. |
-| **Hosts** | Podman/Docker (local) · SSH/Kubernetes (remote) | Interchangeable backends behind one interface. |
-| **App container** | Headless **Wayland** compositor (Selkies/Smithay or sway) | One program per sandboxed container; **only its surface** is streamed via WebRTC. |
+| **Client** | Native app: **CEF (Chromium)** + local **Wayland** compositor | Renders the Vue UI; composites forwarded app surfaces (zero-copy dmabuf); waypipe client + WebRTC fallback. No plain-browser client. |
+| **UI** | Vue 3 + Pinia (in CEF) | Per-user, editable interface (Theme/Interface/Components); loads UI plugins. |
+| **Backend** | Go + **GraphQL** (gqlgen) | Authenticated, privileged control plane: queries/mutations + subscriptions, internal authorization, lifecycle, transport brokering, host abstraction. |
+| **Hosts** | Provisioning API → Podman/Docker (local) · SSH/Kubernetes (remote) | Interchangeable backends; backend holds **no raw container socket**. |
+| **App container** | Headless **Wayland** compositor, **strong isolation by default** | One program per sandbox; surface **forwarded (waypipe)**, WebRTC pixel-streaming as fallback. |
 | **Backend plugins** | Isolated dynamic modules (**WASM**/WASI via Wasmtime) | Loaded in isolation, zero ambient authority, **Android-style declared permissions**, brokered access. |
 | **Frontend plugins** | Curated **Module Federation** | Contribute/override UI behind a stable contract (signed + SRI + CSP). |
 
@@ -38,7 +41,7 @@ investigation into **Wayland over X11** and a comparison with **Shadow** — liv
 - **[docs/LIMITATIONS.md](docs/LIMITATIONS.md)** — a deliberately critical counterweight: usage limits,
   the threat model, and where the design is in tension with its own goals.
 - **[docs/adr/](docs/adr/)** — the architecture decision records:
-  - [0001 — The UI is a pure web app](docs/adr/0001-ui-is-a-pure-web-app.md)
+  - [0001 — The UI is a pure web app](docs/adr/0001-ui-is-a-pure-web-app.md) *(superseded by 0014)*
   - [0002 — Wayland only, no X11](docs/adr/0002-wayland-only-no-x11.md)
   - [0003 — Go core over Python/Flask](docs/adr/0003-go-core-over-python-flask.md)
   - [0004 — Vue + Pinia over React/Redux](docs/adr/0004-vue-pinia-over-react-redux.md)
@@ -51,9 +54,11 @@ investigation into **Wayland over X11** and a comparison with **Shadow** — liv
   - [0011 — Three-level customization with WordPress-style overrides](docs/adr/0011-three-tier-customization-overrides.md)
   - [0012 — Per-user editable UI as data](docs/adr/0012-per-user-editable-ui-as-data.md)
   - [0013 — Strong isolation by default; broker the container socket](docs/adr/0013-strong-isolation-by-default.md)
+  - [0014 — Native client: Chromium engine (CEF) + local Wayland compositor](docs/adr/0014-native-client-cef-local-wayland.md) *(supersedes 0001)*
 
 ## Status
 
 Pre-implementation. This repository currently holds the **architecture and decision records** only.
-Roadmap: (P1) docs · (P2) PoC of one Wayland app, single-surface stream to a page · (P3) Go GraphQL
-backend + per-user Vue workspace · (P4) plugin SDK (WASM backend plugins + Module Federation UI plugins).
+Roadmap: (P1) docs · (P2) PoC — native CEF client + local Wayland compositor forwarding one containerized
+app (waypipe), WebRTC fallback · (P3) Go GraphQL backend + per-user Vue shell in CEF · (P4) plugin SDK
+(WASM backend plugins + Module Federation UI plugins).

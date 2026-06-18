@@ -1,7 +1,11 @@
 # ADR-0001 — The UI is a pure web app (no embedded browser)
 
-- Status: Accepted
+- Status: **Superseded by [ADR-0014](0014-native-client-cef-local-wayland.md)**
 - Date: 2026-06-18
+- Superseded because: "web app" was clarified to mean a **native client embedding the Chromium engine
+  (CEF) + a local Wayland compositor**, not a page in any browser — and the forwarding transport
+  (waypipe) needs a Wayland compositor on the client, which a browser cannot provide. The decision below
+  is retained for history.
 
 ## Context
 

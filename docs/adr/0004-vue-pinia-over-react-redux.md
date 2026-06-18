@@ -28,4 +28,4 @@ Build the UI with **Vue 3** (single-file components, Composition API) and **Pini
 
 - State stays close to the domain (sessions/instances/layout) without reducer ceremony.
 - Vue's reactivity drives live updates from core WebSocket events into panes cleanly.
-- Shipped as a PWA (ADR-0001); buildable with Vite to static assets.
+- Rendered by the native CEF client (ADR-0014); built with Vite to static assets the client loads.

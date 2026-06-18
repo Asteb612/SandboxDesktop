@@ -6,126 +6,139 @@
 
 ## 1. Goal & principles
 
-SandboxDesktop uses the browser to hold the **full user interface**. Programs do not run against the
-user's local display server; each runs inside its own **Wayland** micro-container — locally or on a
-remote host — and only that program's content is streamed into a web UI.
+SandboxDesktop holds the **full user interface** with web technology rendered by the **Chromium engine**,
+packaged as a **native client**. Programs do not run against the user's display server; each runs inside
+its own **Wayland** micro-container — locally or on a remote host — and only that program's content is
+delivered to the client, which **composites and renders it locally**.
 
 Principles:
 
-1. **The UI is a website.** A Vue 3 PWA, openable in any browser. No embedded browser engine.
-2. **It behaves like a normal web app.** An **authenticated user** talks to a **GraphQL** backend; the
-   backend is the single privileged layer with system access.
-3. **One program, one sandbox.** Each app is a single-purpose Wayland micro-container.
-4. **Stream only the application content.** Not a whole desktop — one app surface, damage-tracked, to
-   keep bandwidth low.
-5. **Wayland-native, no X11.** Per-client isolation is a security requirement, not a preference.
-6. **Local ≈ remote.** Where a container runs is a backend detail behind one interface.
-7. **Per-user, modular UI.** Each user gets their own editable interface; plugins can change it.
-8. **Secure by capability.** Plugins start with zero authority and receive only what they are granted.
+1. **The UI is web tech in a native client.** The interface is Vue 3, rendered by an embedded **Chromium
+   engine (CEF)** inside a native client — not a page served to arbitrary browsers. "Web app" here means
+   *web technology + Chromium*, packaged natively (the project's original CEF direction, now with a clear
+   architecture).
+2. **The client renders, not just displays.** The native client runs a **local Wayland compositor** and
+   receives each app's **Wayland protocol + buffers** (waypipe-style), compositing them locally — cheaper
+   than always streaming pixels. WebRTC pixel-streaming is the fallback.
+3. **It behaves like a web app to the backend.** An **authenticated user** talks to a **GraphQL** backend;
+   the backend is the single privileged layer with system access.
+4. **One program, one sandbox.** Each app is a single-purpose Wayland micro-container.
+5. **Deliver only the application content.** One app surface, not a whole desktop.
+6. **Wayland-native, no system X11.** Per-client isolation is a security requirement; the ecosystem has
+   moved to Wayland (§9).
+7. **Local ≈ remote.** Where a container runs is a backend detail behind one interface.
+8. **Per-user, modular UI.** Each user gets their own editable interface; plugins can change it.
+9. **Secure by capability.** Plugins start with zero authority and receive only what they are granted.
 
-This is **not a window manager** and **not** a single embedded-browser app. It is a per-application,
-container-backed **streaming workspace**.
+This is **not a window manager**. It is a native client whose UI is rendered by an embedded Chromium
+engine, hosting **per-application** streamed/forwarded surfaces in a per-user workspace.
 
 ## 2. High-level architecture
 
 ```mermaid
 flowchart TB
-    subgraph Browser["Browser — any device"]
-        UI["Web UI (Vue 3 + Pinia, PWA)\nper-user layout doc · component registry\nfederated plugin UI · theme tokens\napp surface = video/canvas"]
+    subgraph Client["Native client (CEF + local Wayland compositor)"]
+        CEF["Chromium engine (CEF)\nrenders Shell UI (Vue 3 + Pinia)\nlayout doc · registry · plugins · themes"]
+        LWC["Local Wayland compositor (nested)\ncomposites shell + app surfaces\nzero-copy via linux-dmabuf"]
+        WP["waypipe client\n(forwarded app protocol + buffers)"]
+        RTC["WebRTC fallback decoder"]
     end
 
     subgraph Core["Backend / Orchestrator (Go) — privileged"]
         GQL["GraphQL API (gqlgen)\nqueries · mutations · subscriptions"]
-        AUTH["Auth (user identity, per-field authz)"]
+        AUTH["Auth + internal authorization"]
         SM["SessionManager"]
         SB["StreamBroker"]
         MM["ModuleManager"]
-        RM["ResourceManager\n(capability chokepoint)"]
-        CM["ConfigManager\n(per-user UI docs)"]
+        RM["ResourceManager (capability chokepoint)"]
+        CM["ConfigManager (per-user UI docs)"]
         HB["Host backend interface"]
     end
 
-    subgraph Plugins["Plugins (zero ambient authority)"]
-        WASMP["Logic plugin (WASM/WASI)"]
-        FEP["UI plugin (Module Federation)"]
-    end
-
     subgraph Hosts["Container hosts (interchangeable)"]
+        PROV["Least-privilege provisioning API\n(no raw container socket)"]
         LOCAL["Local: Podman / Docker"]
         REMOTE["Remote: SSH / Kubernetes / HTTP"]
     end
 
-    subgraph App["Per-app micro-container"]
-        COMP["Headless Wayland compositor\n(Selkies/Smithay or sway --headless)"]
+    subgraph App["Per-app micro-container (strong isolation)"]
+        COMP["Headless Wayland compositor"]
         PROG["The program"]
-        ENC["Single-surface encoder + WebRTC endpoint"]
+        EP["waypipe server (primary)\nWebRTC encoder (fallback)"]
     end
 
-    UI <-->|"GraphQL over HTTPS + WS\n(authenticated)"| GQL
-    UI <==>|"WebRTC media + input\n(app surface only; SDP/ICE via GraphQL)"| ENC
-    UI -. "loads at runtime" .-> FEP
+    CEF <-->|"GraphQL HTTPS + WS (authenticated)"| GQL
+    CEF -->|"renders into / drives layout"| LWC
+    WP --> LWC
+    RTC --> LWC
+    App ==>|"Wayland protocol + dmabuf/VAAPI (primary)"| WP
+    App -.->|"pixel stream (fallback)"| RTC
     GQL --- AUTH
     GQL --- SM
     SM --- SB
     SM --- HB
-    MM --- WASMP
-    MM --- FEP
-    WASMP --- RM
-    HB --> LOCAL
-    HB --> REMOTE
+    HB --> PROV
+    PROV --> LOCAL
+    PROV --> REMOTE
     LOCAL --> App
     REMOTE --> App
-    PROG --> COMP --> ENC
+    PROG --> COMP --> EP
 ```
 
 ### Components
 
-- **Web UI — Vue 3 + Pinia (PWA).** The whole interface, rendered from a **per-user layout document**
-  (see §7): panels, launcher, command palette, and plugin-contributed UI. Each running app appears as a
-  `<video>`/canvas surface fed by its WebRTC stream. **Pinia** holds session/app-instance/layout state
-  and is shared with federated plugins via an interface contract. Shipped as static assets; installable
-  as a PWA.
-- **Backend / Orchestrator — Go (privileged).** A single binary and the **only** component with system
-  access. It exposes a **GraphQL API** (gqlgen): **queries/mutations** for control (list/launch/stop
-  apps, save layout, manage plugins) and **subscriptions** (over `graphql-transport-ws`) for real-time
-  events (app ready/exited, stream offers, focus). All requests are **authenticated** (§4). Subsystems:
-  `SessionManager` (lifecycle), `StreamBroker` (WebRTC negotiation), `ModuleManager` (plugins),
-  `ResourceManager` (the capability-enforcement chokepoint), `ConfigManager` (per-user UI docs). The
-  retired original `WindowManager` name is dropped.
-- **Host backend abstraction.** One Go interface, two implementations: **local** (Podman/Docker) and
-  **remote** (SSH / Kubernetes / HTTP API), interchangeable from day one. The backend never touches a raw
-  container socket — each implementation sits behind a **narrow, least-privilege provisioning API** that
-  only runs approved images under a sandbox profile with quotas and an egress policy (ADR-0013).
-- **Per-app micro-container.** Runs one program against a **headless Wayland compositor** (Selkies's
-  Rust/Smithay compositor, or `sway --headless`), exposing a **single-surface** WebRTC endpoint.
-- **Stream transport.** WebRTC for low-latency, GPU-accelerated media (H.264 / H.265 / AV1) with an
-  input back-channel; WebSocket pixel fallback. The backend brokers and authorizes session setup
-  (SDP/ICE through GraphQL), but media flows browser ↔ container directly, carrying **only the app's
-  content** (§5).
-- **Plugins.** Two kinds, both starting from **zero authority** (§6): **logic plugins** as WASM/WASI
-  components brokered through `ResourceManager`, and **UI plugins** loaded via curated **Module
-  Federation**. App/GUI plugins are just per-app containers.
+- **Native client — CEF + local Wayland compositor.** The client is a native application that:
+  - embeds the **Chromium engine (CEF)** to render the **Shell UI** (Vue 3 + Pinia) — the per-user layout
+    document (§7), launcher, command palette, plugin UI, theme tokens;
+  - runs a **local, nested Wayland compositor** (wlroots/Smithay-class, à la ChromeOS *Sommelier*) that
+    composites both the CEF shell surface and the remote app surfaces, sharing GPU buffers **zero-copy via
+    `linux-dmabuf`**; the shell defines the layout and the compositor positions app surfaces to match;
+  - includes a **waypipe client** (primary transport) and a **WebRTC decoder** (fallback), plus client-side
+    tools for input, clipboard, and audio.
+  There is **no plain-browser client** (ADR-0014).
+- **Backend / Orchestrator — Go (privileged).** The **only** component with system access. Exposes a
+  **GraphQL API** (gqlgen): **queries/mutations** (list/launch/stop apps, save layout, manage plugins) and
+  **subscriptions** over `graphql-transport-ws` (app ready/exited, session events). All requests
+  **authenticated**, with authorization enforced **internally** (§4). Subsystems: `SessionManager`,
+  `StreamBroker` (transport negotiation), `ModuleManager` (plugins), `ResourceManager` (capability
+  chokepoint), `ConfigManager` (per-user UI docs). The original `WindowManager` name is retired.
+- **Host backend abstraction.** One Go interface, two implementations — **local** (Podman/Docker) and
+  **remote** (SSH / Kubernetes / HTTP) — interchangeable from day one. The backend never touches a raw
+  container socket; each sits behind a **least-privilege provisioning API** that only runs approved images
+  under a sandbox profile with quotas and an egress policy (ADR-0013).
+- **Per-app micro-container.** Runs one program against a **headless Wayland compositor** under
+  **strong-by-default isolation** (microVM/gVisor/Kata, ADR-0013). It exposes a **waypipe server**
+  (primary) and a **WebRTC encoder** (fallback).
+- **Transport.** **Primary:** waypipe-style **Wayland protocol + buffer forwarding** (dmabuf, optional
+  VAAPI video) to the client's local compositor — cheaper for typical GUIs, rendered locally.
+  **Fallback:** **WebRTC** pixel-streaming (H.264/H.265/AV1) for heavy/animated surfaces or constrained
+  paths. The backend brokers and authorizes session setup (via GraphQL); media flows client ↔ container.
+- **Plugins.** Two kinds, both from **zero authority** (§6): **logic plugins** as isolated WASM modules,
+  and **UI plugins** via curated Module Federation rendered inside the CEF shell.
 
 ## 3. Data flow
 
 ```mermaid
 sequenceDiagram
-    participant UI as Web UI (Vue)
+    participant UI as Shell UI (Vue in CEF)
+    participant LWC as Local Wayland compositor
     participant API as GraphQL backend (Go)
-    participant Host as Host backend
+    participant Host as Provisioning API
     participant C as Wayland container
 
     UI->>API: authenticate (login / token)
     API-->>UI: session + per-user UI document
     UI->>API: launch(app) [mutation]
     API->>API: authorize user + issue capabilities
-    API->>Host: spawn(app image)
-    Host->>C: start compositor + program
-    C-->>API: single-surface stream endpoint ready
+    API->>Host: run(approved image, sandbox profile, quotas)
+    Host->>C: start compositor + program (strong isolation)
+    C-->>API: forwarding endpoint ready
     API-->>UI: app-ready event [subscription]
-    UI->>API: WebRTC offer [mutation]
-    API->>C: broker SDP/ICE
-    C-->>UI: media (app surface only) → panel
+    Note over UI,C: primary — Wayland forwarding
+    C->>LWC: waypipe protocol + dmabuf buffers
+    UI->>LWC: place app surface per layout document
+    Note over UI,C: fallback — WebRTC when forwarding unfit
+    C-->>LWC: pixel stream (H.26x/AV1)
     UI->>API: input / resize
     API->>C: forward input / reconfigure surface
     C-->>API: exit
@@ -134,50 +147,43 @@ sequenceDiagram
 
 ## 4. Authentication & API
 
-The system behaves like a conventional web application (see
+The client talks to the backend like a conventional web application (see
 [ADR-0007](adr/0007-authenticated-graphql-backend.md)).
 
-- **One authenticated entry point.** Every interaction goes through the **GraphQL** backend over HTTPS
-  (queries/mutations) and a WebSocket (subscriptions). The backend is the **only** component holding
-  system access — the browser never touches the host or containers directly except for brokered WebRTC
-  media.
-- **Auth.** Pluggable identity: built-in accounts to start, **OIDC**-ready. Tokens are verified on HTTP
-  requests and in the **WebSocket init payload** (the gqlgen subscription auth pattern); the
-  authenticated user is placed in the resolver context.
-- **Access rights are managed internally by GraphQL.** Authorization is a **backend** concern, enforced
-  *inside* the GraphQL layer — declarative **schema directives** (e.g. `@auth`, `@hasPermission`) plus
-  per-resolver checks against the user in context. Clients and plugins never make access-control
-  decisions; they only receive what the resolvers are willing to return.
-- **Capability brokering.** When a user launches an app or a plugin acts, the backend mints scoped
-  capabilities (§6) and enforces them in `ResourceManager`. There is no ambient access — the backend's
-  system privilege is never delegated wholesale.
+- **One authenticated entry point.** All control goes through the **GraphQL** backend over HTTPS
+  (queries/mutations) and a WebSocket (subscriptions). The backend is the **only** component with system
+  access; the client only also holds brokered media/forwarding sessions to containers.
+- **Auth.** Pluggable identity: built-in accounts to start, **OIDC**-ready. Tokens verified on HTTP and in
+  the **WebSocket init payload**; the authenticated user is placed in the resolver context.
+- **Access rights are managed internally by GraphQL** — declarative **schema directives** (`@auth`,
+  `@hasPermission`) plus per-resolver checks. Clients and plugins never make access-control decisions.
+- **Capability brokering.** Launching an app or a plugin action mints scoped capabilities (§6) enforced in
+  `ResourceManager`; no ambient access.
 
-## 5. Streaming: only the application content
+## 5. Delivering only the application content
 
-To minimize bandwidth, **only the program's own surface is streamed** — never a desktop, wallpaper, or
-other windows (see [ADR-0008](adr/0008-stream-only-application-content.md)).
+**Only the program's own surface is delivered** — never a desktop or other windows (see
+[ADR-0008](adr/0008-stream-only-application-content.md)).
 
-- **It falls out of the model.** Each program already runs alone in its own headless compositor
-  (§2, ADR-0005), so "the desktop" *is* the single app. The encoder captures that **one toplevel
-  surface**.
-- **Damage tracking.** The compositor reports changed regions; only those are encoded and sent, so an
-  idle app costs ~no bandwidth and a partially-updating app sends only its delta.
-- **Adaptive.** Codec (H.264/H.265/AV1) and bitrate adapt to the link, with a low-bandwidth mode
-  (borrowed from Shadow's playbook, §10).
-- **Prior art.** *waypipe* forwards a single Wayland app's protocol/buffers over one socket (lz4/zstd);
-  the *XDG `ScreenCast` portal + PipeWire* path supports **per-window** capture into an encoder. Our
-  per-app compositor makes single-surface capture the default rather than a special case.
+- **Why forwarding, not just pixels.** **Wayland has no drawing-command protocol** (unlike X11): clients
+  render their own pixels into `dmabuf`/shared-memory **buffers**. waypipe forwards the protocol *plus
+  those buffers* (compressed; optional VAAPI video for large/changing surfaces) to the client's **local
+  compositor**, which renders them. For typical, mostly-static GUIs this is cheaper than continuously
+  encoding video; for animation/video it falls back to a codec.
+- **It falls out of the model.** Each program runs alone in its own headless compositor (§2, ADR-0005), so
+  "the desktop" *is* the single app — one surface to forward or capture.
+- **Fallback.** WebRTC single-surface pixel-streaming (damage-tracked, adaptive H.264/H.265/AV1) covers
+  heavy surfaces and any path where forwarding is unavailable.
 
 ## 6. Plugin system & security
 
-Plugins must be **very secure**: the design assumes a plugin should be able to do *only* what it was
-explicitly granted, and nothing else. The unifying rule is **capability-based, zero ambient authority**,
-with an **Android-style permission model** — every plugin declares the authorizations it needs and runs
-only with those that were granted.
+Plugins must be **very secure**: a plugin should do *only* what it was explicitly granted. The unifying
+rule is **capability-based, zero ambient authority**, with an **Android-style permission model** — every
+plugin declares the authorizations it needs and runs only with those granted.
 
 ```mermaid
 flowchart LR
-    subgraph FE["Frontend plugin (UI)"]
+    subgraph FE["Frontend plugin (UI, in CEF shell)"]
         FED["Module Federation module\n(curated · signed · SRI)\nshares Pinia via contract"]
     end
     subgraph BE["Backend plugin = dynamic library, loaded in isolation"]
@@ -198,40 +204,31 @@ flowchart LR
 ```
 
 **Backend plugins** (see [ADR-0009](adr/0009-backend-plugin-security-capability-model.md)) are **dynamic
-libraries the Go backend loads in isolation** — never linked into the host process with ambient access:
+libraries the Go backend loads in isolation** — never linked into the host with ambient access:
 
 - **The isolated dynamic-library mechanism is WASM.** A plugin is a dynamically-loaded **WASM Component
-  Model / WASI** module that the backend loads via an **embedded Wasmtime runtime**. This is a true
-  "dynamic library loaded in isolation": memory-isolated from the host, zero ambient authority,
-  filesystem/network capability-gated, with typed interfaces via WIT. **Native in-process `.so`/`dlopen`
-  (Go `plugin`) is rejected** — it shares the host address space, so a fault or exploit compromises the
-  whole backend. Native code that cannot target WASM runs instead as an **out-of-process sandboxed
-  worker over RPC** (hashicorp/go-plugin style), still outside the host's address space.
-- **Android-style declared permissions.** Each plugin ships a **permission manifest** listing the
-  authorizations it requires (which paths, hosts, devices, GraphQL operations). `ModuleManager` validates
-  it; the user grants it at install; the plugin receives a scoped, revocable **capability token** (the
-  through-line from the original README's "module token = rights"). Ungranted permissions simply do not
-  exist for that plugin.
-- **Brokered access only.** No plugin touches the host directly; every privileged action goes through
-  `ResourceManager`, which enforces the granted permissions, applies resource limits, and audits.
-- **Programs vs plugins.** User *programs/apps* (the software you run and stream) are the per-app
-  **Wayland containers** of §2/ADR-0005; *plugins* (which extend the backend) are the isolated dynamic
-  modules above. The two are different things.
+  Model / WASI** module loaded via an **embedded Wasmtime runtime**: memory-isolated, zero ambient
+  authority, filesystem/network capability-gated, typed via WIT. **Native in-process `.so`/`dlopen` is
+  rejected** (shares the host address space). Native code that cannot target WASM runs as an
+  **out-of-process sandboxed worker over RPC**.
+- **Android-style declared permissions.** Each plugin ships a **permission manifest**; `ModuleManager`
+  validates it, the user grants it at install, and the plugin gets a scoped, revocable **capability
+  token**. Ungranted permissions do not exist for it.
+- **Brokered access only.** Every privileged action goes through `ResourceManager` (enforces permissions,
+  applies limits, audits).
+- **Programs vs plugins.** User *programs* are per-app Wayland containers (§2/ADR-0005); *plugins* extend
+  the backend and use the isolated-module model above.
 
-**Frontend plugins** (see [ADR-0010](adr/0010-frontend-plugins-module-federation.md)):
-
-- Loaded via **curated Module Federation** (Vite). They run in the app context and may share Pinia, so
-  the **trust gate is the security boundary**: plugin **review + signing + Subresource Integrity** + a
-  **stable plugin API contract**, with **CSP** as defense-in-depth. Any privileged data still comes only
-  through the user-scoped GraphQL API.
-- A future **untrusted tier** can run UI in a **sandboxed `<iframe>` + postMessage** capability bridge
-  (the Figma model) without changing the contract.
+**Frontend plugins** (see [ADR-0010](adr/0010-frontend-plugins-module-federation.md)) load via **curated
+Module Federation** and render inside the CEF shell, sharing Pinia via a contract; the **trust gate**
+(review + signing + SRI + stable contract, CSP defense-in-depth) is the security boundary. A future
+untrusted tier can run UI in a sandboxed surface without changing the contract.
 
 ## 7. Frontend customization: three overloadable levels
 
-The frontend is modular and **different for each user**, and **plugins can change it**. Customization is
-organized as **three layered levels**, each with a **defined interface** that can be **overloaded** — the
-WordPress model of child themes, the template hierarchy, and pluggable blocks (see
+The frontend is modular and **different for each user**, and **plugins can change it**. Customization has
+**three layered levels**, each a **defined interface** that can be **overloaded** — the WordPress model of
+child themes, the template hierarchy, and pluggable blocks (see
 [ADR-0011](adr/0011-three-tier-customization-overrides.md)).
 
 | Level | What it controls | Defined interface | Overload mechanism (WordPress analogue) |
@@ -240,105 +237,94 @@ WordPress model of child themes, the template hierarchy, and pluggable blocks (s
 | **2 · Interface** | Which regions/panels exist and how they're arranged | A **layout schema** — named slots/regions + a per-user layout document | A theme or plugin ships an Interface template; a more specific provider overrides it (template hierarchy) |
 | **3 · Component** | The implementation of an individual widget | A **component contract** — props/slots/events schema + themeable `::part()`s | Any provider **re-registers** a component id with its own implementation behind the same contract (pluggable functions / block variations) |
 
-- **Override resolution — most specific wins.** For every token, slot, and component id the system
-  resolves a provider in priority order: **per-user/per-instance config → enabled plugins → active theme
-  → built-in defaults**. Because each level has a stable contract, an override is drop-in — a plugin can
-  replace a single component without the rest of the UI knowing, exactly as a WordPress plugin overloads
-  a pluggable function.
-- **Theme (L1)** is realized with **design tokens** as CSS custom properties consumed by **Web Components
-  Shadow DOM**; tokens pierce the shadow boundary for theming and **`::part()`** exposes internals for
-  structural overrides — the component author decides what is themeable (a safe public styling contract).
-- **Interface (L2)** is **UI-as-data** (see [ADR-0012](adr/0012-per-user-editable-ui-as-data.md)): each
-  user's interface is a **serializable layout document** (slots → component refs + props + bound tokens +
-  geometry), rendered by the Vue shell via `<component :is>`. An **edit mode** lets the user
-  rearrange/resize/add/remove panels (drag-drop) and restyle via tokens. No code authoring.
-- **Component (L3)** entries live in a **component registry**, each declaring its contract (props schema
-  for the editor). Host components, theme-provided components, and **federated plugin components**
-  register the same way and are interchangeable behind the contract.
-- **Per-user persistence.** A user's selected theme, layout document, and enabled plugins/overrides are
-  keyed to the authenticated user and stored via `ConfigManager`; on login the backend returns them and
-  the shell renders that user's resolved interface — hence a **different interface per user**.
+- **Override resolution — most specific wins:** **per-user/per-instance → enabled plugins → active theme →
+  built-in default**. Stable contracts make every override drop-in.
+- **Theme (L1)** = **design tokens** as CSS custom properties consumed by **Web Components Shadow DOM**;
+  tokens pierce the shadow boundary, **`::part()`** exposes internals for structural overrides.
+- **Interface (L2)** = **UI-as-data** (see [ADR-0012](adr/0012-per-user-editable-ui-as-data.md)): a
+  **serializable layout document** (slots → component refs + props + tokens + geometry) rendered via
+  `<component :is>`; an **edit mode** rearranges panels and restyles via tokens. No code authoring.
+- **Component (L3)** entries live in a **component registry** declaring their contract; host, theme, and
+  federated plugin components register the same way and are interchangeable.
+- **Per-user persistence.** Theme + layout document + enabled plugins are keyed to the user and stored via
+  `ConfigManager`; on login the backend returns them and the shell renders the resolved interface.
 
 ## 8. Technology challenge
 
-The original stack (see git history) was re-founded. Each choice was challenged:
+The original stack (see git history) was re-founded, then iterated. Current verdicts:
 
 | Original | Verdict | Recommendation & why |
 |----------|---------|----------------------|
-| **React** | Replaced | **Vue 3**. Single-file components + fine-grained reactivity suit a streaming, data-driven workspace; per project direction. |
-| **Redux** | Replaced | **Pinia**. State is sessions + app instances + per-user layout — Pinia's light stores fit and are shared with federated plugins via contract; Redux boilerplate was unjustified. |
-| **Python (core)** | Demoted | Kept only for **plugins** (logic plugins compile to WASM; app plugins are containers); a poor fit for the latency-sensitive privileged core. |
-| **Flask + REST** | Replaced | **Go** backend exposing **GraphQL** (queries/mutations/subscriptions). REST polling cannot carry real-time stream/session events; GraphQL gives one authenticated, typed contract; Go gives concurrency + a single deployable binary. |
-| **CEF (embedded Chromium)** | Dropped | "The UI is a website" → a **Vue PWA** in any browser. No embedded Chromium, no Electron/Tauri — lighter and truer to the goal. |
-| **X11** | Removed | **Wayland only** (§9). |
+| **React** | Replaced | **Vue 3** — SFCs + reactivity suit a data-driven workspace, rendered by the Chromium engine. |
+| **Redux** | Replaced | **Pinia** — state is sessions + app instances + per-user layout; shared with federated plugins via contract. |
+| **Python (core)** | Demoted | Kept only for **plugins** (logic plugins compile to WASM); poor fit for the latency-sensitive privileged core. |
+| **Flask + REST** | Replaced | **Go** + **GraphQL** (queries/mutations/subscriptions) — one authenticated, typed contract with internal authz. |
+| **CEF (embedded Chromium)** | **Reinstated** | The project's original CEF direction is restored: a **native client embedding the Chromium engine** renders the UI, and a **local Wayland compositor** composites forwarded app surfaces (ADR-0014). The interim "pure PWA in any browser" (ADR-0001) is **superseded** — a browser cannot host a Wayland compositor, which the forwarding transport needs. |
+| **X11** | Removed | **Wayland only** at the system level (§9); per-container XWayland is the only sanctioned X11 surface, for legacy apps. |
 
 ## 9. Wayland-only investigation
 
-**Decision: commit fully to Wayland; no X11, no XWayland fallback.** (See
+**Decision: Wayland-only at the system level; no system X11.** (See
 [ADR-0002](adr/0002-wayland-only-no-x11.md).)
 
-- **Isolation (decisive).** Under X11 any client can read every other client's input and window
-  contents. For a system that runs **untrusted user modules**, that is disqualifying. Wayland isolates
-  each client to its own surface — apps cannot snoop each other.
-- **Streaming efficiency.** Wayland's **damage tracking** lets the compositor encode only the regions
-  that changed (§5), which pairs naturally with WebRTC/GStreamer for low-latency, GPU-accelerated frames.
-- **Maturity (2026).** Selkies — the engine behind **Webtop 4.x** — runs apps on a headless Wayland
-  compositor (Rust/Smithay) and streams to the browser over WebRTC/WebSocket. Webtop explicitly
-  **dropped X11/KasmVNC**. The Wayland path is now the production-grade one.
-- **No XWayland.** Keeping the stack purely Wayland preserves the isolation model and keeps the runtime
-  lean. **Legacy X11-only apps are an explicit non-goal.**
+- **Isolation (decisive).** Under X11 any client can read every other client's input and window contents —
+  disqualifying for running **untrusted programs**. Wayland isolates each client to its own surface.
+- **Ecosystem has moved (2026).** X.Org is in **maintenance-only** status (since 2024); **Fedora 43** and
+  **Ubuntu 25.10** dropped X11 sessions; **GNOME 50** (Mar 2026) ships with **zero X11 code**; **KDE
+  Plasma 6** defaults to Wayland; **RHEL 10** removed the Xorg server, keeping only **XWayland**; multiple
+  critical X.Org CVEs surfaced in 20-year-old code in 2025. Building new on X11 means building on a
+  sunsetting base.
+- **Native-client synergy.** The client's local Wayland compositor + waypipe forwarding (§2, §5) gives the
+  "render on the client" bandwidth win that X11 network-transparency would have offered — without X11's
+  isolation holes.
+- **Legacy apps.** X11-only programs run via **XWayland *inside their own per-app container*** (the app is
+  alone, so X11's snooping flaw is harmless) — the only sanctioned X11 surface. System-wide X11 and a
+  shared XWayland remain out of scope.
 
-## 10. Reference systems (including Shadow)
+## 10. Reference systems
 
-| System | Model | Transport | Granularity | Relation to this project |
-|--------|-------|-----------|-------------|--------------------------|
-| **Shadow** | Whole Windows PC in the cloud | **Proprietary** (H.265, ~20–50 ms), thin "any browser" client | Whole machine | Reference *ceiling*. Borrow: codec strategy (H.265/AV1), adaptive low-bandwidth mode, overlap decode+display to cut latency. Reject: proprietary protocol, whole-OS granularity. |
-| **Selkies / Webtop** | Containerized Linux desktop | Open WebRTC/WebSocket, Wayland/Smithay | Whole desktop | Closest base to build on or vendor. |
-| **Kasm / neko** | Containerized app/desktop streaming | WebRTC | Desktop / single app | Precedents for container-per-session streaming. |
-| **SandboxDesktop** | Per-app sandbox workspace | Open WebRTC | **Per application** | Open transport (like Selkies) + **per-application** Wayland containers (finer than Shadow/Webtop) + a per-user Vue workspace. |
-
-Note on Shadow: they chose a **proprietary heavyweight protocol over WebRTC** deliberately, because
-"WebRTC doesn't allow some things." That is the right call for a commercial whole-PC product chasing
-peak latency; it is the **wrong** call here, where openness, browser-native clients, and per-app
-granularity matter more than the last few milliseconds.
+| System | Model | Transport | Relation to this project |
+|--------|-------|-----------|--------------------------|
+| **Shadow** | Whole Windows PC in cloud | Proprietary, H.265, thin client | Ceiling reference; borrow codec/adaptive-bitrate ideas; reject proprietary protocol + whole-OS granularity. |
+| **Selkies / Webtop** | Containerized Linux desktop | Open WebRTC, Wayland/Smithay | Basis for the **WebRTC fallback** path and headless-Wayland-in-container. |
+| **waypipe** | Single-app Wayland forwarding | Wayland protocol + dmabuf/VAAPI | The **primary transport** model for the native client. |
+| **ChromeOS Sommelier** | Nested Wayland compositor | dmabuf zero-copy, surface delegation | Precedent for compositing external Wayland surfaces alongside a Chromium UI in one client. |
+| **xpra (X11)** | Persistent remote X11 apps + HTML5 | X11 forwarding | **Considered and rejected**: mature browser remote-display, but inherits X11's no-isolation model — unfit for untrusted apps. |
 
 ## 11. Sandboxing posture
 
-User programs are untrusted, so **strong isolation is the default**, not an opt-in (ADR-0013):
+User programs are untrusted, so **strong isolation is the default**, not opt-in (ADR-0013):
 
-- One program per sandbox, defaulting to **microVM / gVisor / Kata**-class isolation; rootless + seccomp
-  + dropped capabilities + no host networking is the floor. Plain rootless is an explicit, logged
-  downgrade for trusted/first-party images only.
+- One program per sandbox, defaulting to **microVM / gVisor / Kata**; rootless + seccomp + dropped caps +
+  no host networking is the floor. Plain rootless is an explicit, logged downgrade for trusted images.
 - The backend reaches the runtime only through a **least-privilege provisioning API** (no raw container
-  socket), which enforces **per-user quotas** and a **default-deny egress firewall** per sandbox.
-- **WASM/WASI** capability sandboxing for logic plugins (§6) — zero ambient authority in-process.
-- Wayland per-client isolation (§9) is the in-sandbox complement to sandbox-level isolation.
-- Caveat: **GPU passthrough** for hardware encode/accel widens the in-sandbox attack surface; keep encode
-  off the host where possible and pair with the strongest isolation tier (see LIMITATIONS §2.3).
+  socket), enforcing **per-user quotas** and a **default-deny egress firewall** per sandbox.
+- **WASM/WASI** capability sandboxing for logic plugins (§6).
+- Wayland per-client isolation (§9) complements sandbox-level isolation.
+- Caveat: **GPU passthrough** for hardware encode/decode widens the in-sandbox attack surface; pair with
+  the strongest isolation tier (see LIMITATIONS §2.3).
 
 ## 12. Roadmap
 
 1. **P1 — Docs.** This architecture + the ADRs. *(current)*
-2. **P2 — PoC.** One Wayland app in a container, single-surface stream to a static page; validate the
-   Selkies path and the app-content-only stream.
-3. **P3 — Backend + UI.** Go GraphQL backend (`SessionManager`/`StreamBroker` + auth + host abstraction)
-   and the per-user Vue workspace (layout document + component registry + edit mode + theming).
-4. **P4 — Plugin SDK.** WASM/WASI logic-plugin SDK + container app-plugin recipe with capability
-   manifests/tokens, plus the Module Federation contract for UI plugins.
+2. **P2 — PoC.** Native client = CEF rendering a trivial Vue shell + a local nested Wayland compositor;
+   forward one containerized Wayland app via waypipe and composite it; WebRTC fallback for a heavy app.
+3. **P3 — Backend + UI.** Go GraphQL backend (`SessionManager`/`StreamBroker` + auth + provisioning API)
+   and the per-user Vue shell (layout document + registry + edit mode + theming) in CEF.
+4. **P4 — Plugin SDK.** WASM/WASI logic-plugin SDK + container app recipe with permission manifests/tokens,
+   plus the Module Federation contract for UI plugins.
 
 ## Sources
 
-- LinuxServer Webtop 4.0 — Wayland: <https://www.linuxserver.io/blog/webtop-4-0-wayland-is-here-engage-the-reality-engine>
-- LinuxServer Webtop 4.1 — "X11 is dead / what is Selkies": <https://www.linuxserver.io/blog/webtop-4-1-x11-is-dead-and-what-is-selkies-anyway>
-- Selkies project: <https://github.com/selkies-project/selkies>
+- CEF (Chromium Embedded Framework) + Wayland progress: <https://www.phoronix.com/news/Chromium-CEF-Wayland-Progress>
+- ChromeOS Sommelier (nested Wayland compositor, dmabuf): <https://chromium.googlesource.com/chromiumos/platform2/+/HEAD/vm_tools/sommelier/README.md>
+- Linux dmabuf protocol: <https://wayland.app/protocols/linux-dmabuf-v1>
 - waypipe (single-app Wayland forwarding): <https://gitlab.freedesktop.org/mstoeckl/waypipe>
-- XDG ScreenCast portal / PipeWire screen capture: <https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html>
+- Selkies project (WebRTC fallback / headless Wayland): <https://github.com/selkies-project/selkies>
+- GNOME 50 drops X11: <https://www.theregister.com/software/2026/03/19/gnome-50-debuts-with-x11-axed-wayland-front-and-center/>
+- RHEL 10 Wayland/Xorg plans: <https://www.redhat.com/en/blog/rhel-10-plans-wayland-and-xorg-server>
+- xpra (X11 remote apps + HTML5, considered/rejected): <https://github.com/Xpra-org/xpra>
 - gqlgen — GraphQL subscriptions & auth (Go): <https://gqlgen.com/recipes/subscriptions/> · <https://gqlgen.com/recipes/authentication/>
 - WASI / WebAssembly Component Model: <https://wasi.dev/> · <https://component-model.bytecodealliance.org/>
-- Wasmtime security model: <https://docs.wasmtime.dev/security.html>
 - Vite Module Federation: <https://github.com/originjs/vite-plugin-federation>
-- Web Components / Shadow DOM `::part()` styling: <https://developer.mozilla.org/en-US/docs/Web/CSS/::part>
-- Figma plugin security model (untrusted-UI reference): <https://www.figma.com/blog/how-we-built-the-figma-plugin-system/>
-- neko (self-hosted WebRTC browser/app streaming): <https://github.com/m1k1o/neko>
-- Shadow: <https://shadow.tech> · <https://en.wikipedia.org/wiki/Shadow.tech>
-- gVisor: <https://gvisor.dev/>
+- Shadow: <https://shadow.tech> · gVisor: <https://gvisor.dev/>
