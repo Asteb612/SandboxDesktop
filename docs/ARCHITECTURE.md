@@ -1,7 +1,8 @@
 # SandboxDesktop — Architecture
 
 > Status: design / pre-implementation. This document is the source of truth for the project's
-> direction. Individual decisions are recorded as ADRs under [`adr/`](adr/).
+> direction. Individual decisions are recorded as ADRs under [`adr/`](adr/). For the critical view —
+> usage limits and the threat model — see [LIMITATIONS.md](LIMITATIONS.md).
 
 ## 1. Goal & principles
 

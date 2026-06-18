@@ -35,6 +35,8 @@ investigation into **Wayland over X11** and a comparison with **Shadow** — liv
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the full design, diagrams, technology challenge, and
   Wayland investigation.
+- **[docs/LIMITATIONS.md](docs/LIMITATIONS.md)** — a deliberately critical counterweight: usage limits,
+  the threat model, and where the design is in tension with its own goals.
 - **[docs/adr/](docs/adr/)** — the architecture decision records:
   - [0001 — The UI is a pure web app](docs/adr/0001-ui-is-a-pure-web-app.md)
   - [0002 — Wayland only, no X11](docs/adr/0002-wayland-only-no-x11.md)
