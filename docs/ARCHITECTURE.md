@@ -2,7 +2,8 @@
 
 > Status: design / pre-implementation. This document is the source of truth for the project's
 > direction. Individual decisions are recorded as ADRs under [`adr/`](adr/). For the critical view —
-> usage limits and the threat model — see [LIMITATIONS.md](LIMITATIONS.md).
+> usage limits and the threat model — see [LIMITATIONS.md](LIMITATIONS.md); for concrete mitigations see
+> [SECURITY.md](SECURITY.md); for existing projects to build on per layer see [TOOLING.md](TOOLING.md).
 
 ## 1. Goal & principles
 
@@ -306,13 +307,17 @@ User programs are untrusted, so **strong isolation is the default**, not opt-in 
 
 ## 12. Roadmap
 
+Concrete tools per phase are in [TOOLING.md](TOOLING.md); mitigations in [SECURITY.md](SECURITY.md).
+
 1. **P1 — Docs.** This architecture + the ADRs. *(current)*
-2. **P2 — PoC.** Native client = CEF rendering a trivial Vue shell + a local nested Wayland compositor;
-   forward one containerized Wayland app via waypipe and composite it; WebRTC fallback for a heavy app.
-3. **P3 — Backend + UI.** Go GraphQL backend (`SessionManager`/`StreamBroker` + auth + provisioning API)
-   and the per-user Vue shell (layout document + registry + edit mode + theming) in CEF.
-4. **P4 — Plugin SDK.** WASM/WASI logic-plugin SDK + container app recipe with permission manifests/tokens,
-   plus the Module Federation contract for UI plugins.
+2. **P2 — PoC.** Native client (**CEF** + a **Smithay/wlroots** nested compositor, Sommelier-style);
+   forward one containerized Wayland app (**Cage** + **waypipe**) and composite it; **Selkies/Pion +
+   GStreamer** WebRTC fallback for a heavy app. De-risk **CEF-on-Wayland** early (Electron fallback).
+3. **P3 — Backend + UI.** Go **gqlgen** backend (`SessionManager`/`StreamBroker` + OIDC auth + a
+   least-privilege provisioning API over **Sysbox/Kata**) and the per-user **Vue/Pinia** shell
+   (Gridstack layout + Lit components + Style Dictionary tokens) in CEF.
+4. **P4 — Plugin SDK.** **Extism/wazero** logic-plugin SDK + container app recipe with **Biscuit**
+   permission tokens (ADR-0015), plus the **Module Federation + SES** contract for UI plugins (ADR-0016).
 
 ## Sources
 

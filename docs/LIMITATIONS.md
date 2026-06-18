@@ -15,11 +15,10 @@
   GUIs but not for animation/video.
 - The **backend is a single, maximally-privileged point of compromise**. Most of the security model
   hangs on it being bug-free.
-- The biggest contradiction with "very secure": **frontend plugins via Module Federation run untrusted
-  code in the trusted app context.** "Curated + signed" is *trust the publisher*, not isolation.
-- **Containers and WASM are not hard security boundaries.** The design treats stronger isolation
-  (gVisor/Kata) as opt-in, i.e. the default is the weaker boundary — while the whole point is running
-  *untrusted* programs.
+- The biggest contradiction with "very secure" was **frontend plugins via Module Federation running
+  untrusted code in the trusted app context** — now mitigated with **Hardened JS / SES** (ADR-0016).
+- Concrete mitigations for every item below are collected in **[SECURITY.md](SECURITY.md)**; tools to
+  build on are in **[TOOLING.md](TOOLING.md)**.
 
 ---
 
@@ -142,9 +141,11 @@ read the user's session/GraphQL token, act as the user, keylog, phish, and exfil
   one poisoned remote can corrupt shared state for the whole app.
 - **"Curation" is a single human gate** — it doesn't scale and is the only thing standing between a user
   and a hostile plugin. That is *publisher trust*, not the capability isolation the backend plugins get.
-- *Recommendation:* for anything not 100% first-party, the **sandboxed-iframe + postMessage** model
-  (deferred in ADR-0010) should be the default, not the future tier. Otherwise drop the "very secure"
-  claim for the frontend.
+- *Mitigation ([SECURITY.md](SECURITY.md) §2.5, **[ADR-0016](adr/0016-harden-frontend-plugins-ses.md)**):*
+  keep curated federation but add **Hardened JavaScript (SES) Compartments** per plugin (the MetaMask
+  Snaps model) so a plugin only gets explicitly granted capabilities, plus cosign signing + SRI + a
+  capability bridge; **ShadowRealm/iframe** for the untrusted tier. This bounds a bad plugin to its
+  granted capabilities rather than the whole UI — but SES is hardening, not an absolute boundary.
 
 ### 2.6 UI-as-data is an injection surface
 The per-user layout document (ADR-0012) is **data rendered into the UI**. If documents can reference
@@ -165,7 +166,8 @@ props schema-validated and sanitized.
 - **Tenant isolation** of layout docs, capabilities, and live streams must be airtight; one IDOR lets a
   user reach another's session or stream.
 - **Capability tokens** need a real lifecycle: scoping, expiry, revocation, replay protection, and secure
-  storage. This is a subsystem, not a field.
+  storage. *Mitigation:* **Biscuit** offline-attenuable capability tokens
+  (**[ADR-0015](adr/0015-capability-tokens-biscuit.md)**, SECURITY §2.8) + short TTL + revocation list.
 
 ### 2.9 Supply chain & abuse platform
 - Trust chain for **app container images** (who builds/signs them? base-image CVEs), the **WASM
@@ -189,8 +191,12 @@ use, and it is a poor fit where **low latency, low bandwidth, offline, or access
 changes that would most close the gap between the stated goals and reality:
 1. ✅ **Adopted ([ADR-0013](adr/0013-strong-isolation-by-default.md)):** strong isolation is the default
    for user programs (microVM/gVisor) and the backend no longer holds the raw container socket.
-2. ⬜ **Still open:** sandbox frontend plugins (iframe) by default — Module Federation only for audited
-   first-party code.
+2. ✅ **Addressed ([ADR-0016](adr/0016-harden-frontend-plugins-ses.md)):** frontend plugins are confined
+   with Hardened JS / SES Compartments (+ signing/SRI/CSP), with ShadowRealm/iframe for the untrusted
+   tier — bounding a bad plugin to its granted capabilities.
+
+Concrete mitigations for all of §2 are in **[SECURITY.md](SECURITY.md)**; reusable tools in
+**[TOOLING.md](TOOLING.md)**.
 
 ## Sources
 - GraphQL DoS / complexity / field-authz: <https://www.wiz.io/academy/api-security/graphql-api-security-risks> · <https://portswigger.net/web-security/graphql> · <https://markaicode.com/graphql-api-dos-vulnerabilities-2025/>

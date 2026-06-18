@@ -40,6 +40,10 @@ investigation into **Wayland over X11** and a comparison with **Shadow** — liv
   Wayland investigation.
 - **[docs/LIMITATIONS.md](docs/LIMITATIONS.md)** — a deliberately critical counterweight: usage limits,
   the threat model, and where the design is in tension with its own goals.
+- **[docs/SECURITY.md](docs/SECURITY.md)** — concrete mitigations for each threat (SES-hardened plugins,
+  Biscuit capability tokens, strong-isolation provisioning, GraphQL hardening, coturn, signing).
+- **[docs/TOOLING.md](docs/TOOLING.md)** — existing projects to build on per layer (reuse vs reference vs
+  build), so the project assembles proven components instead of reinventing them.
 - **[docs/adr/](docs/adr/)** — the architecture decision records:
   - [0001 — The UI is a pure web app](docs/adr/0001-ui-is-a-pure-web-app.md) *(superseded by 0014)*
   - [0002 — Wayland only, no X11](docs/adr/0002-wayland-only-no-x11.md)
@@ -55,6 +59,8 @@ investigation into **Wayland over X11** and a comparison with **Shadow** — liv
   - [0012 — Per-user editable UI as data](docs/adr/0012-per-user-editable-ui-as-data.md)
   - [0013 — Strong isolation by default; broker the container socket](docs/adr/0013-strong-isolation-by-default.md)
   - [0014 — Native client: Chromium engine (CEF) + local Wayland compositor](docs/adr/0014-native-client-cef-local-wayland.md) *(supersedes 0001)*
+  - [0015 — Capability tokens via Biscuit](docs/adr/0015-capability-tokens-biscuit.md)
+  - [0016 — Harden frontend plugins with Hardened JavaScript (SES)](docs/adr/0016-harden-frontend-plugins-ses.md)
 
 ## Status
 
