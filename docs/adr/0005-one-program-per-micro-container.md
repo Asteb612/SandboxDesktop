@@ -12,10 +12,13 @@ the module and its rights**. We need an isolation and identity model for those p
 ## Decision
 
 Each program runs in its **own single-purpose micro-container** with a headless Wayland compositor
-(ADR-0002). Containers are **Podman rootless** by default. Each module/plugin is issued a **capability
-token** (carried forward from the original README idea) presented on every core API call to identify it
-and scope its rights. Stronger isolation — **gVisor** or **Kata Containers** — is available opt-in for
-untrusted modules.
+(ADR-0002). Each module/plugin is issued a **capability token** (carried forward from the original README
+idea) presented on every core API call to identify it and scope its rights.
+
+> **Isolation tier — updated by [ADR-0013](0013-strong-isolation-by-default.md).** Because user programs
+> are untrusted, the **default** sandbox is now **microVM / gVisor / Kata**-class, not namespace-only
+> rootless containers. Rootless + seccomp + dropped capabilities + no host networking is the floor;
+> plain rootless is an explicit, logged downgrade for trusted images only.
 
 ## Alternatives considered
 

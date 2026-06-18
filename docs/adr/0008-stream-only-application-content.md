@@ -23,9 +23,16 @@ Stream **only the program's single surface** — never a desktop or other window
 
 - **Full virtual-desktop capture (Xvfb/whole screen):** simplest, but streams chrome and idle pixels the
   user never asked for. Rejected on bandwidth.
-- **waypipe-style Wayland protocol forwarding:** efficient and genuinely per-app, but it targets a
-  *local Wayland compositor* on the client, not a browser. Kept as conceptual prior art, not the
-  browser transport.
+- **waypipe-style Wayland protocol forwarding ("stream commands, not pixels"):** tempting, but it does
+  not fit. Unlike X11, **Wayland has no drawing-command protocol** — clients render their own pixels into
+  shared-memory/`dmabuf` **buffers** and hand the compositor a finished frame. So there are no high-level
+  commands to replay client-side; waypipe forwards the protocol *plus the buffer contents* (compressed
+  lz4/zstd, and **video-encoded** for large/changing surfaces — i.e. it ships pixels too). Crucially it
+  requires a **real Wayland compositor on the client**, which a **browser cannot be** — it breaks the
+  "the UI is a website" goal (ADR-0001). It can be cheaper than a video codec only for small, static
+  GUI updates, and is worse for animation/video. Kept as conceptual prior art for a hypothetical *native*
+  client; not the browser transport. (The only true "render on the client" path in a browser is an app
+  that is *actually a web app* running locally — out of scope here.)
 - **Per-window capture via XDG `ScreenCast` portal + PipeWire:** the general per-window path; with our
   one-app-per-compositor model, single-surface capture is the default rather than a special case.
 

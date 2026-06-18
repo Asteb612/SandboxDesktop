@@ -50,6 +50,7 @@ investigation into **Wayland over X11** and a comparison with **Shadow** — liv
   - [0010 — Frontend plugins via curated Module Federation](docs/adr/0010-frontend-plugins-module-federation.md)
   - [0011 — Three-level customization with WordPress-style overrides](docs/adr/0011-three-tier-customization-overrides.md)
   - [0012 — Per-user editable UI as data](docs/adr/0012-per-user-editable-ui-as-data.md)
+  - [0013 — Strong isolation by default; broker the container socket](docs/adr/0013-strong-isolation-by-default.md)
 
 ## Status
 

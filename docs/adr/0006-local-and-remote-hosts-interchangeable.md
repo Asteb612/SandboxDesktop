@@ -13,11 +13,17 @@ given program.
 
 Define a **single host-backend interface** in the Go core, with interchangeable implementations:
 
-- **Local:** Podman/Docker socket.
+- **Local:** a narrow provisioning API in front of Podman/Docker (see note below).
 - **Remote:** SSH / Kubernetes / HTTP API.
 
 Both are designed from day one; the core selects a backend per app launch and brokers the stream
 identically regardless of location.
+
+> **Privilege — updated by [ADR-0013](0013-strong-isolation-by-default.md).** The backend must **not**
+> hold a raw container/Docker socket (that is effectively root on the host). Every implementation fronts
+> the runtime with a **least-privilege provisioning API** that accepts only "run this approved image with
+> this sandbox profile, these limits, this egress policy" — and enforces per-user quotas. The Go backend
+> cannot issue arbitrary container commands.
 
 ## Alternatives considered
 

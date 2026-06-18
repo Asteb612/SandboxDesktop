@@ -77,9 +77,10 @@ By design the Go backend is the **only** privileged component and brokers everyt
   confused-deputy through a plugin capability ⇒ full host (and possibly remote-host) takeover.
 - Centralizing privilege is good for *auditing* but makes the backend the most attractive target in the
   system, and the blast radius of any backend bug is total.
-- **Mitigations the design must add (not optional):** never hand the raw container socket to the backend
-  — front it with a narrow, rootless provisioning API; strict egress firewalls on hosts; per-user
-  quotas; treat the backend as a hostile-input parser at every boundary.
+- **Mitigations — now adopted ([ADR-0013](adr/0013-strong-isolation-by-default.md)):** the backend no
+  longer holds a raw container socket — it calls a narrow, least-privilege provisioning API; per-user
+  quotas and default-deny egress are part of that contract. Still required: treat the backend as a
+  hostile-input parser at every boundary.
 
 ### 2.2 GraphQL is a broad, easy-to-misuse attack surface
 - **Complexity/depth DoS:** a single nested query can fan out to thousands of resolver/DB/container
@@ -96,15 +97,16 @@ By design the Go backend is the **only** privileged component and brokers everyt
   at WS-init and then run long-lived (token revocation and re-authorization mid-stream are easy to miss).
 
 ### 2.3 Containers are not a security boundary by default
-The system's *raison d'être* is running **untrusted programs**, yet the default is namespace-only rootless
-containers (shared kernel). Container escape via kernel vulnerabilities is a live threat, and
-**gVisor/Kata are "opt-in"** — so the secure mode is the exception, not the default.
-- **GPU passthrough** for hardware encode/accel exposes DRM/GPU drivers to the untrusted workload — a
-  well-known escape vector — partially undermining the isolation.
+The system's *raison d'être* is running **untrusted programs**. The original default (namespace-only
+rootless containers, shared kernel) was too weak — container escape via kernel vulnerabilities is a live
+threat. **Resolved ([ADR-0013](adr/0013-strong-isolation-by-default.md)):** strong isolation
+(microVM/gVisor/Kata) is now the **default**, with seccomp/dropped-caps/no-host-net as the floor; plain
+rootless is an explicit downgrade for trusted images only. Remaining caveats:
+- **GPU passthrough** for hardware encode/accel still exposes DRM/GPU drivers to the untrusted workload —
+  a well-known escape vector. Keep encode off the host where possible and use the strongest isolation
+  tier.
 - The per-app **compositor + encoder live next to the app** inside (or adjacent to) the same trust zone;
   an app that escapes its compositor may reach the stream/encoder.
-- *Recommendation:* make gVisor/Kata (or microVMs) the **default** for user programs, add seccomp/AppArmor
-  profiles, drop all capabilities, no host networking.
 
 ### 2.4 WASM is not the airtight sandbox it's marketed as
 ADR-0009 leans hard on WASM/WASI for "isolated dynamic libraries". Real, current caveats:
@@ -174,9 +176,10 @@ SandboxDesktop is a reasonable **personal / small-team, trusted-user** remote-ap
 network. It is **not**, as currently specified, a "very secure" platform for **untrusted multi-tenant**
 use, and it is a poor fit where **low latency, low bandwidth, offline, or accessibility** matter. The two
 changes that would most close the gap between the stated goals and reality:
-1. Make **strong isolation the default** for user programs (microVM/gVisor) and never expose the raw
-   container socket to the backend.
-2. **Sandbox frontend plugins (iframe) by default** — Module Federation only for audited first-party code.
+1. ✅ **Adopted ([ADR-0013](adr/0013-strong-isolation-by-default.md)):** strong isolation is the default
+   for user programs (microVM/gVisor) and the backend no longer holds the raw container socket.
+2. ⬜ **Still open:** sandbox frontend plugins (iframe) by default — Module Federation only for audited
+   first-party code.
 
 ## Sources
 - GraphQL DoS / complexity / field-authz: <https://www.wiz.io/academy/api-security/graphql-api-security-risks> · <https://portswigger.net/web-security/graphql> · <https://markaicode.com/graphql-api-dos-vulnerabilities-2025/>

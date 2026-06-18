@@ -92,8 +92,10 @@ flowchart TB
   `SessionManager` (lifecycle), `StreamBroker` (WebRTC negotiation), `ModuleManager` (plugins),
   `ResourceManager` (the capability-enforcement chokepoint), `ConfigManager` (per-user UI docs). The
   retired original `WindowManager` name is dropped.
-- **Host backend abstraction.** One Go interface, two implementations: **local** (Podman/Docker socket)
-  and **remote** (SSH / Kubernetes / HTTP API). Interchangeable from day one.
+- **Host backend abstraction.** One Go interface, two implementations: **local** (Podman/Docker) and
+  **remote** (SSH / Kubernetes / HTTP API), interchangeable from day one. The backend never touches a raw
+  container socket — each implementation sits behind a **narrow, least-privilege provisioning API** that
+  only runs approved images under a sandbox profile with quotas and an egress policy (ADR-0013).
 - **Per-app micro-container.** Runs one program against a **headless Wayland compositor** (Selkies's
   Rust/Smithay compositor, or `sway --headless`), exposing a **single-surface** WebRTC endpoint.
 - **Stream transport.** WebRTC for low-latency, GPU-accelerated media (H.264 / H.265 / AV1) with an
@@ -302,11 +304,17 @@ granularity matter more than the last few milliseconds.
 
 ## 11. Sandboxing posture
 
-- One program per container; **Podman rootless** as the baseline.
-- **gVisor** (or **Kata Containers**) as opt-in stronger isolation for untrusted modules, where the
-  per-syscall / VM boundary is worth the overhead.
+User programs are untrusted, so **strong isolation is the default**, not an opt-in (ADR-0013):
+
+- One program per sandbox, defaulting to **microVM / gVisor / Kata**-class isolation; rootless + seccomp
+  + dropped capabilities + no host networking is the floor. Plain rootless is an explicit, logged
+  downgrade for trusted/first-party images only.
+- The backend reaches the runtime only through a **least-privilege provisioning API** (no raw container
+  socket), which enforces **per-user quotas** and a **default-deny egress firewall** per sandbox.
 - **WASM/WASI** capability sandboxing for logic plugins (§6) — zero ambient authority in-process.
-- Wayland per-client isolation (§9) is the in-container complement to container-level isolation.
+- Wayland per-client isolation (§9) is the in-sandbox complement to sandbox-level isolation.
+- Caveat: **GPU passthrough** for hardware encode/accel widens the in-sandbox attack surface; keep encode
+  off the host where possible and pair with the strongest isolation tier (see LIMITATIONS §2.3).
 
 ## 12. Roadmap
 
