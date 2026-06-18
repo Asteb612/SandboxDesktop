@@ -2,6 +2,11 @@
 
 - Status: Accepted
 - Date: 2026-06-18
+- Note: the choice of **Go** stands. The **API contract** described below (“WebSocket-first event API +
+  thin REST”) is **superseded by [ADR-0007](0007-authenticated-graphql-backend.md)**, which makes the
+  authenticated **GraphQL** API the single contract (queries/mutations + subscriptions). The plugin
+  model below is refined by [ADR-0009](0009-backend-plugin-security-capability-model.md) (isolated
+  dynamic modules, not in-process sidecars).
 
 ## Context
 
